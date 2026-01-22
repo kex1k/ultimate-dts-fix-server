@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: dts-converter-backend
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      # Поддержка нескольких директорий с видеофайлами
+      # ЗАМЕНИТЕ эти пути на ваши реальные директории
+      - /path/to/media/library1:/media/library1
+      - /path/to/media/library2:/media/library2
+      - /path/to/media/library3:/media/library3
+      # Можно добавить любое количество директорий
+    environment:
+      - GIN_MODE=release
+      - DATABASE_PATH=/app/data/database.sqlite
+      - LOG_LEVEL=info
+      - PORT=3001
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    # Добавляем права для записи в медиа директории
+    # Замените на ваши UID:GID если нужно
+    user: "1000:1000"
+
+  frontend:
+    image: nginx:alpine
+    container_name: dts-converter-frontend
+    volumes:
+      - ./frontend:/usr/share/nginx/html
+      - ./frontend/nginx.conf:/etc/nginx/nginx.conf
+    ports:
+      - "6969:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  data:
+    driver: local
+  logs:
+    driver: local

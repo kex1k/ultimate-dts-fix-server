@@ -1,0 +1,33 @@
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Data
+data/
+tmp/
+temp/
+
+# Environment
+.env
+.env.local
+
+# Go
+vendor/
+go.work
