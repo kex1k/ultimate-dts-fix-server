@@ -1,12 +1,12 @@
 package database
 
 import (
-	"ultimate-dts-fix-server/backend/models"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+	"ultimate-dts-fix-server/backend/models"
 )
 
 // JSONStore - простое хранилище на основе JSON файла
@@ -107,6 +107,28 @@ func (s *JSONStore) GetAllTasks() ([]*models.Task, error) {
 	}
 
 	return tasks, nil
+}
+
+// GetTask возвращает задачу по ID
+func (s *JSONStore) GetTask(taskID string) (*models.Task, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	task, exists := s.tasks[taskID]
+	if !exists {
+		return nil, nil
+	}
+
+	return task, nil
+}
+
+// DeleteTask удаляет задачу по ID
+func (s *JSONStore) DeleteTask(taskID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.tasks, taskID)
+	return s.save()
 }
 
 // save сохраняет данные в файл

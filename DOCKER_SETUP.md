@@ -24,7 +24,7 @@ services:
       # Можно добавить любое количество директорий
     environment:
       - GIN_MODE=release
-      - DATABASE_PATH=/app/data/database.sqlite
+      - DATABASE_PATH=/app/data/tasks.json
       - LOG_LEVEL=info
       - PORT=3001
     ports:
@@ -308,8 +308,8 @@ docker-compose restart
 
 ### Бэкап данных:
 ```bash
-# Бэкап базы данных
-cp ./data/database.sqlite ./backup/database-$(date +%Y%m%d).sqlite
+# Бэкап JSON хранилища
+cp ./data/tasks.json ./backup/tasks-$(date +%Y%m%d).json
 
 # Бэкап логов
 tar -czf logs-backup-$(date +%Y%m%d).tar.gz ./logs
@@ -337,7 +337,7 @@ services:
       - /home/user/Documentaries:/media/docs
     environment:
       - GIN_MODE=release
-      - DATABASE_PATH=/app/data/database.sqlite
+      - DATABASE_PATH=/app/data/tasks.json
       - LOG_LEVEL=info
       - PORT=3001
     ports:
@@ -376,7 +376,7 @@ services:
       - /mnt/storage/collection:/media/collection
     environment:
       - GIN_MODE=release
-      - DATABASE_PATH=/app/data/database.sqlite
+      - DATABASE_PATH=/app/data/tasks.json
       - LOG_LEVEL=info
       - PORT=3001
     ports:
@@ -473,15 +473,15 @@ docker-compose exec backend rm /media/movies/test.txt
 docker-compose exec backend ffmpeg -version
 ```
 
-### База данных повреждена
+### JSON хранилище повреждено
 ```bash
 # Остановите сервис
 docker-compose down
 
-# Удалите базу данных
-rm ./data/database.sqlite
+# Удалите JSON файл
+rm ./data/tasks.json
 
-# Запустите снова (база создастся автоматически)
+# Запустите снова (файл создастся автоматически)
 docker-compose up -d
 ```
 

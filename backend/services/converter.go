@@ -1,18 +1,20 @@
 package services
 
 import (
-	"ultimate-dts-fix-server/backend/models"
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
+	"ultimate-dts-fix-server/backend/models"
 )
 
 type ConverterService struct {
@@ -39,7 +41,7 @@ func (s *ConverterService) SetWebSocketService(wsService *WebSocketService) {
 
 func (s *ConverterService) Start() {
 	log.Println("Сервис конвертации запущен")
-	
+
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -100,7 +102,7 @@ func (s *ConverterService) GetActiveTask() *models.Task {
 
 func (s *ConverterService) convertTask(task *models.Task) {
 	log.Printf("Начало конвертации: %s", task.FilePath)
-	
+
 	// Устанавливаем активную задачу
 	s.mu.Lock()
 	s.activeTask = task
@@ -122,30 +124,37 @@ func (s *ConverterService) convertTask(task *models.Task) {
 	task.Status = models.StatusProcessing
 	now := time.Now()
 	task.StartedAt = &now
-	
-	// Обновляем задачу в базе
-	if err := s.queueService.db.UpdateTask(task); err != nil {
+
+	// Логируем информацию об аудио (уже получена при добавлении в очередь)
+	if task.AudioInfo != nil {
+		log.Printf("Аудио формат: %s, каналы: %s (%d), sample rate: %s",
+			task.AudioInfo.CodecName, task.AudioInfo.ChannelLayout,
+			task.AudioInfo.Channels, task.AudioInfo.SampleRate)
+	}
+
+	// Обновляем задачу в базе через QueueService
+	if err := s.queueService.UpdateTask(task); err != nil {
 		log.Printf("Ошибка обновления статуса задачи: %v", err)
 		return
 	}
-	
+
 	if s.wsService != nil {
 		s.wsService.BroadcastConversionProgress(task.ID, 0, models.StatusProcessing, "Начало конвертации")
 	}
-	
+
 	// Генерируем путь для выходного файла
 	outputPath := s.generateOutputPath(task.FilePath)
 	task.OutputPath = outputPath
-	
+
 	// Выполняем конвертацию
 	err := s.executeFFmpegConversion(ctx, task)
-	
+
 	if err != nil {
 		if ctx.Err() == context.Canceled {
 			task.Status = models.StatusError
 			task.Error = "Конвертация отменена пользователем"
 			log.Printf("Конвертация отменена: %s", task.FilePath)
-			
+
 			if s.wsService != nil {
 				s.wsService.BroadcastConversionProgress(task.ID, 0, models.StatusError,
 					"Конвертация отменена")
@@ -154,48 +163,75 @@ func (s *ConverterService) convertTask(task *models.Task) {
 			task.Status = models.StatusError
 			task.Error = err.Error()
 			log.Printf("Ошибка конвертации: %v", err)
-			
+
 			if s.wsService != nil {
 				s.wsService.BroadcastConversionProgress(task.ID, 0, models.StatusError,
 					"Ошибка конвертации: "+err.Error())
 			}
 		}
 	} else {
+		log.Printf("FFmpeg завершил работу успешно для: %s", task.FilePath)
+
 		task.Status = models.StatusCompleted
 		now = time.Now()
 		task.CompletedAt = &now
 		task.Progress = 100
 		log.Printf("Конвертация завершена: %s -> %s", task.FilePath, outputPath)
-		
-		// Переименовываем исходный файл в .bak
-		if err := s.renameInputToBak(task.FilePath); err != nil {
-			log.Printf("Предупреждение: не удалось переименовать исходный файл в .bak: %v", err)
+
+		// Проверяем существование выходного файла
+		if _, err := os.Stat(outputPath); err != nil {
+			log.Printf("ОШИБКА: Выходной файл не найден: %s, ошибка: %v", outputPath, err)
+		} else {
+			log.Printf("Выходной файл создан успешно: %s", outputPath)
 		}
-		
+
+		// Переименовываем исходный файл в .bak
+		log.Printf("Попытка переименовать исходный файл: %s", task.FilePath)
+		if err := s.renameInputToBak(task.FilePath); err != nil {
+			log.Printf("ОШИБКА: не удалось переименовать исходный файл в .bak: %v", err)
+			log.Printf("Путь к файлу: %s", task.FilePath)
+			// Проверяем существование исходного файла
+			if _, statErr := os.Stat(task.FilePath); statErr != nil {
+				log.Printf("ОШИБКА: Исходный файл не найден: %v", statErr)
+			} else {
+				log.Printf("Исходный файл существует, но не удалось переименовать")
+			}
+		} else {
+			log.Printf("Исходный файл успешно переименован в .bak: %s", task.FilePath)
+		}
+
 		if s.wsService != nil {
 			s.wsService.BroadcastConversionProgress(task.ID, 100, models.StatusCompleted,
 				"Конвертация завершена")
+			log.Printf("Отправлено WebSocket уведомление о завершении")
 		}
 	}
-	
-	// Обновляем задачу в базе
-	if err := s.queueService.db.UpdateTask(task); err != nil {
-		log.Printf("Ошибка обновления задачи после конвертации: %v", err)
+
+	// Обновляем задачу в базе через QueueService (это также отправит WebSocket уведомление)
+	log.Printf("Обновление задачи в базе: ID=%s, Status=%s", task.ID, task.Status)
+	if err := s.queueService.UpdateTask(task); err != nil {
+		log.Printf("ОШИБКА обновления задачи после конвертации: %v", err)
+	} else {
+		log.Printf("Задача успешно обновлена в базе: %s, статус: %s", task.ID, task.Status)
 	}
+
+	log.Printf("Завершение обработки задачи: %s", task.ID)
 }
 
 func (s *ConverterService) generateOutputPath(inputPath string) string {
 	dir := filepath.Dir(inputPath)
 	filename := filepath.Base(inputPath)
-	
-	// Заменяем ТОЛЬКО "DTS-HD.5.1" на "FLAC.7.1" в имени файла
+
+	// Используем регулярное выражение для замены DTS.*5.1 на FLAC.7.1
+	// Паттерн: начинается с DTS, между ними могут быть точки, буквы и дефисы, заканчивается на 5.1
 	baseName := strings.TrimSuffix(filename, filepath.Ext(filename))
-	baseName = strings.ReplaceAll(baseName, "DTS-HD.5.1", "FLAC.7.1")
-	
+	re := regexp.MustCompile(`DTS[.\-A-Za-z]*5\.1`)
+	baseName = re.ReplaceAllString(baseName, "FLAC.7.1")
+
 	// Добавляем суффикс если файл уже существует
 	outputPath := filepath.Join(dir, baseName+filepath.Ext(filename))
 	counter := 1
-	
+
 	for {
 		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
 			break
@@ -203,13 +239,13 @@ func (s *ConverterService) generateOutputPath(inputPath string) string {
 		outputPath = filepath.Join(dir, fmt.Sprintf("%s_%d%s", baseName, counter, filepath.Ext(filename)))
 		counter++
 	}
-	
+
 	return outputPath
 }
 
 func (s *ConverterService) renameInputToBak(inputPath string) error {
 	bakPath := inputPath + ".bak"
-	
+
 	// Проверяем, не существует ли уже .bak файл
 	if _, err := os.Stat(bakPath); err == nil {
 		// Если существует, добавляем счетчик
@@ -222,8 +258,49 @@ func (s *ConverterService) renameInputToBak(inputPath string) error {
 			counter++
 		}
 	}
-	
+
 	return os.Rename(inputPath, bakPath)
+}
+
+// AudioStreamInfo содержит информацию об аудио потоке
+type AudioStreamInfo struct {
+	CodecName     string `json:"codec_name"`
+	ChannelLayout string `json:"channel_layout"`
+	Channels      int    `json:"channels"`
+	SampleRate    string `json:"sample_rate"`
+	BitRate       string `json:"bit_rate"`
+}
+
+// FFProbeOutput структура для парсинга вывода ffprobe
+type FFProbeOutput struct {
+	Streams []AudioStreamInfo `json:"streams"`
+}
+
+// getAudioInfo получает информацию об аудио потоке через ffprobe
+func (s *ConverterService) getAudioInfo(filePath string) (*AudioStreamInfo, error) {
+	cmd := exec.Command("ffprobe",
+		"-v", "quiet",
+		"-print_format", "json",
+		"-show_streams",
+		"-select_streams", "a:0",
+		filePath,
+	)
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выполнения ffprobe: %v", err)
+	}
+
+	var probeOutput FFProbeOutput
+	if err := json.Unmarshal(output, &probeOutput); err != nil {
+		return nil, fmt.Errorf("ошибка парсинга вывода ffprobe: %v", err)
+	}
+
+	if len(probeOutput.Streams) == 0 {
+		return nil, fmt.Errorf("аудио поток не найден")
+	}
+
+	return &probeOutput.Streams[0], nil
 }
 
 func (s *ConverterService) executeFFmpegConversion(ctx context.Context, task *models.Task) error {
@@ -244,34 +321,34 @@ func (s *ConverterService) executeFFmpegConversion(ctx context.Context, task *mo
 		"-loglevel", "info",
 		task.OutputPath,
 	)
-	
+
 	// Сохраняем команду для возможной отмены
 	s.mu.Lock()
 	s.activeCmd = cmd
 	s.mu.Unlock()
-	
+
 	// Создаем pipe для чтения прогресса
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("ошибка создания pipe: %v", err)
 	}
-	
+
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("ошибка создания stderr pipe: %v", err)
 	}
-	
+
 	// Запускаем команду
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("ошибка запуска FFmpeg: %v", err)
 	}
-	
+
 	// Читаем прогресс в реальном времени с throttling
 	go s.readFFmpegProgress(stdout, task)
-	
+
 	// Читаем stderr для логирования
 	go s.readFFmpegStderr(stderr, task)
-	
+
 	// Ждем завершения команды
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() == context.Canceled {
@@ -279,72 +356,114 @@ func (s *ConverterService) executeFFmpegConversion(ctx context.Context, task *mo
 		}
 		return fmt.Errorf("ошибка конвертации: %v", err)
 	}
-	
+
 	return nil
 }
 
 func (s *ConverterService) readFFmpegProgress(stdout io.ReadCloser, task *models.Task) {
 	scanner := bufio.NewScanner(stdout)
 	lastUpdate := time.Now()
-	const updateInterval = 10 * time.Second
-	
-	var progressData strings.Builder
-	
+	const updateInterval = 2 * time.Second
+
+	progressMap := make(map[string]string)
+
 	for scanner.Scan() {
 		line := scanner.Text()
-		progressData.WriteString(line)
-		progressData.WriteString("\n")
-		
-		// Отправляем обновление только раз в 10 секунд
-		if time.Since(lastUpdate) >= updateInterval {
+
+		// Парсим ключ=значение из FFmpeg progress
+		if strings.Contains(line, "=") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				value := strings.TrimSpace(parts[1])
+				progressMap[key] = value
+			}
+		}
+
+		// Отправляем обновление только раз в 2 секунды
+		if time.Since(lastUpdate) >= updateInterval && len(progressMap) > 0 {
 			if s.wsService != nil {
+				// Формируем читаемое сообщение
+				progressMsg := s.formatFFmpegProgress(progressMap)
+				log.Printf("[FFmpeg Progress] Task %s: %s", task.ID, progressMsg)
 				s.wsService.BroadcastConversionProgress(
 					task.ID,
 					0,
 					models.StatusProcessing,
-					progressData.String(),
+					progressMsg,
 				)
 			}
-			progressData.Reset()
 			lastUpdate = time.Now()
 		}
 	}
-	
+
 	// Отправляем последнее обновление если есть данные
-	if progressData.Len() > 0 && s.wsService != nil {
+	if len(progressMap) > 0 && s.wsService != nil {
+		progressMsg := s.formatFFmpegProgress(progressMap)
+		log.Printf("[FFmpeg Progress Final] Task %s: %s", task.ID, progressMsg)
 		s.wsService.BroadcastConversionProgress(
 			task.ID,
 			0,
 			models.StatusProcessing,
-			progressData.String(),
+			progressMsg,
 		)
 	}
+}
+
+func (s *ConverterService) formatFFmpegProgress(progressMap map[string]string) string {
+	var parts []string
+
+	if frame, ok := progressMap["frame"]; ok && frame != "" {
+		parts = append(parts, fmt.Sprintf("Frame: %s", frame))
+	}
+
+	if fps, ok := progressMap["fps"]; ok && fps != "" {
+		parts = append(parts, fmt.Sprintf("FPS: %s", fps))
+	}
+
+	if speed, ok := progressMap["speed"]; ok && speed != "" {
+		parts = append(parts, fmt.Sprintf("Speed: %s", speed))
+	}
+
+	if outTime, ok := progressMap["out_time"]; ok && outTime != "" {
+		parts = append(parts, fmt.Sprintf("Time: %s", outTime))
+	}
+
+	if len(parts) == 0 {
+		return "Processing..."
+	}
+
+	return strings.Join(parts, " | ")
 }
 
 func (s *ConverterService) readFFmpegStderr(stderr io.ReadCloser, task *models.Task) {
 	scanner := bufio.NewScanner(stderr)
 	lastUpdate := time.Now()
-	const updateInterval = 10 * time.Second
-	
+	const updateInterval = 2 * time.Second
+
 	var stderrData strings.Builder
-	
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		stderrData.WriteString(line)
 		stderrData.WriteString("\n")
-		
-		// Отправляем обновление только раз в 10 секунд
+
+		// Отправляем обновление только раз в 2 секунды
 		if time.Since(lastUpdate) >= updateInterval {
 			if s.wsService != nil {
-				s.wsService.BroadcastLog(stderrData.String(), "info")
+				stderrMsg := stderrData.String()
+				log.Printf("[FFmpeg Stderr] Task %s: %s", task.ID, stderrMsg)
+				s.wsService.BroadcastLog(stderrMsg, "info")
 			}
 			stderrData.Reset()
 			lastUpdate = time.Now()
 		}
 	}
-	
+
 	// Отправляем последнее обновление если есть данные
 	if stderrData.Len() > 0 && s.wsService != nil {
-		s.wsService.BroadcastLog(stderrData.String(), "info")
+		stderrMsg := stderrData.String()
+		log.Printf("[FFmpeg Stderr Final] Task %s: %s", task.ID, stderrMsg)
+		s.wsService.BroadcastLog(stderrMsg, "info")
 	}
 }

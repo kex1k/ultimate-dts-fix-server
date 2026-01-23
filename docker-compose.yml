@@ -15,14 +15,12 @@ services:
       # Можно добавить любое количество директорий
     environment:
       - GIN_MODE=release
-      - DATABASE_PATH=/app/data/database.sqlite
+      - DATABASE_PATH=/app/data/tasks.json
       - LOG_LEVEL=info
       - PORT=3001
     ports:
       - "3001:3001"
     restart: unless-stopped
-    # Добавляем права для записи в медиа директории
-    # Замените на ваши UID:GID если нужно
     user: "1000:1000"
 
   frontend:

@@ -1,10 +1,10 @@
 package database
 
 import (
-	"ultimate-dts-fix-server/backend/models"
 	"log"
 	"os"
 	"path/filepath"
+	"ultimate-dts-fix-server/backend/models"
 )
 
 // TaskRepository предоставляет методы для работы с задачами
@@ -32,8 +32,8 @@ func InitDB() (*TaskRepository, error) {
 		return nil, err
 	}
 
-	log.Printf("База данных инициализирована: %s", dbPath)
-	
+	log.Printf("JSON хранилище инициализировано: %s", dbPath)
+
 	return &TaskRepository{store: store}, nil
 }
 
@@ -55,6 +55,16 @@ func (r *TaskRepository) GetPendingTasks() ([]*models.Task, error) {
 // GetAllTasks возвращает все задачи
 func (r *TaskRepository) GetAllTasks() ([]*models.Task, error) {
 	return r.store.GetAllTasks()
+}
+
+// GetTask возвращает задачу по ID
+func (r *TaskRepository) GetTask(taskID string) (*models.Task, error) {
+	return r.store.GetTask(taskID)
+}
+
+// DeleteTask удаляет задачу по ID
+func (r *TaskRepository) DeleteTask(taskID string) error {
+	return r.store.DeleteTask(taskID)
 }
 
 // Close закрывает хранилище

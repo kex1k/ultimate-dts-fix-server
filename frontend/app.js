@@ -6,7 +6,7 @@ class DTSConverterApp {
         this.queue = [];
         this.history = [];
         this.activeTask = null;
-        this.filePaths = [];
+        this.searchResults = [];
         this.init();
     }
 
@@ -21,20 +21,21 @@ class DTSConverterApp {
 
     setupEventListeners() {
         const filePathInput = document.getElementById('file-path-input');
-        const addFileBtn = document.getElementById('add-file-btn');
+        const searchFilesBtn = document.getElementById('search-files-btn');
+        const closeSearchBtn = document.getElementById('close-search-btn');
 
-        addFileBtn.addEventListener('click', () => {
-            this.addFilePath();
+        searchFilesBtn.addEventListener('click', () => {
+            this.searchFiles();
+        });
+
+        closeSearchBtn.addEventListener('click', () => {
+            this.closeSearchResults();
         });
 
         filePathInput.addEventListener('keypress', (event) => {
             if (event.key === 'Enter') {
-                this.addFilePath();
+                this.searchFiles();
             }
-        });
-
-        document.getElementById('add-to-queue-btn').addEventListener('click', () => {
-            this.addFilesToQueue();
         });
     }
 
@@ -134,96 +135,129 @@ class DTSConverterApp {
                 this.loadActiveTask();
                 break;
             case 'conversion_progress':
-                this.updateConversionProgress(data);
+                this.updateConversionProgress(data.data);
                 break;
             case 'log':
-                this.addLog(data.message, data.level);
+                this.addLog(data.data.message, data.data.level);
                 break;
             default:
                 console.log('Неизвестный тип сообщения:', data);
         }
     }
 
-    addFilePath() {
+    async searchFiles() {
         const filePathInput = document.getElementById('file-path-input');
-        const filePath = filePathInput.value.trim();
+        const pattern = filePathInput.value.trim();
         
-        if (!filePath) {
-            this.addLog('Введите путь к файлу', 'warning');
-            return;
-        }
-
-        // Проверяем, что путь начинается с /media/
-        if (!filePath.startsWith('/media/')) {
-            this.addLog('Путь должен начинаться с /media/', 'warning');
-            return;
-        }
-
-        // Проверяем, что файл не добавлен уже
-        if (this.filePaths.includes(filePath)) {
-            this.addLog('Файл уже добавлен в список', 'warning');
-            return;
-        }
-
-        this.filePaths.push(filePath);
-        this.renderFileList();
-        filePathInput.value = '';
-        this.addLog(`Добавлен файл: ${filePath}`, 'info');
-    }
-
-    removeFilePath(index) {
-        const removedPath = this.filePaths[index];
-        this.filePaths.splice(index, 1);
-        this.renderFileList();
-        this.addLog(`Удален файл: ${removedPath}`, 'info');
-    }
-
-    renderFileList() {
-        const fileList = document.getElementById('file-list');
+        // Пустой паттерн разрешен - будет использован дефолтный DTS.*5\.1
+        const searchPattern = pattern || 'DTS.*5\\.1';
+        this.addLog(`Поиск файлов: ${searchPattern}`, 'info');
         
-        if (this.filePaths.length === 0) {
-            fileList.innerHTML = '<div class="empty-queue">Файлы не добавлены</div>';
-            return;
-        }
-
-        fileList.innerHTML = this.filePaths.map((filePath, index) => `
-            <div class="file-item">
-                <div class="file-item-name">${filePath}</div>
-                <button class="file-item-remove" onclick="app.removeFilePath(${index})">×</button>
-            </div>
-        `).join('');
-    }
-
-    async addFilesToQueue() {
-        if (this.filePaths.length === 0) {
-            this.addLog('Нет файлов для добавления в очередь', 'warning');
-            return;
-        }
-
         try {
-            for (const filePath of this.filePaths) {
-                const response = await fetch('/api/tasks', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ filePath })
-                });
+            const response = await fetch('/api/search-files', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ pattern: pattern })
+            });
 
-                if (!response.ok) {
-                    throw new Error(`Ошибка добавления файла: ${filePath}`);
-                }
-
-                const result = await response.json();
-                this.addLog(`Файл добавлен в очередь: ${filePath}`, 'info');
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Ошибка поиска файлов');
             }
 
-            this.filePaths = [];
-            this.renderFileList();
-            this.addLog('Все файлы добавлены в очередь', 'info');
+            const data = await response.json();
+            this.searchResults = data.files || [];
+            this.renderSearchResults();
+            this.addLog(`Найдено файлов: ${data.count}`, 'info');
         } catch (error) {
-            this.addLog(`Ошибка добавления файлов: ${error.message}`, 'error');
+            this.addLog(`Ошибка поиска: ${error.message}`, 'error');
         }
+    }
+
+    renderSearchResults() {
+        const container = document.getElementById('search-results-container');
+        const tbody = document.getElementById('search-results-body');
+        const countSpan = document.getElementById('search-count');
+        
+        if (this.searchResults.length === 0) {
+            container.style.display = 'none';
+            this.addLog('Файлы не найдены', 'warning');
+            return;
+        }
+
+        container.style.display = 'block';
+        countSpan.textContent = this.searchResults.length;
+        
+        tbody.innerHTML = this.searchResults.map((file, index) => {
+            const size = this.formatFileSize(file.size);
+            const date = new Date(file.modified * 1000).toLocaleString();
+            
+            return `
+                <tr onclick="app.addFileFromSearch(${index})">
+                    <td class="file-name-cell">${file.name}</td>
+                    <td class="file-path-cell" title="${file.path}">${file.path}</td>
+                    <td class="file-size-cell">${size}</td>
+                    <td class="file-date-cell">${date}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async addFileFromSearch(index) {
+        const file = this.searchResults[index];
+        
+        if (!file) {
+            return;
+        }
+
+        this.addLog(`Добавление в очередь: ${file.name}`, 'info');
+        
+        try {
+            const response = await fetch('/api/tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filePath: file.path })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Ошибка добавления файла');
+            }
+
+            this.addLog(`Файл добавлен в очередь: ${file.name}`, 'info');
+        } catch (error) {
+            this.addLog(`Ошибка: ${error.message}`, 'error');
+        }
+    }
+
+    closeSearchResults() {
+        const container = document.getElementById('search-results-container');
+        container.style.display = 'none';
+        this.searchResults = [];
+    }
+
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    formatBitrate(bitrate) {
+        const rate = parseInt(bitrate);
+        if (isNaN(rate)) return bitrate;
+        
+        if (rate >= 1000000) {
+            return (rate / 1000000).toFixed(1) + ' Mbps';
+        } else if (rate >= 1000) {
+            return (rate / 1000).toFixed(0) + ' kbps';
+        }
+        return rate + ' bps';
     }
 
     updateActiveTask(task) {
@@ -240,6 +274,37 @@ class DTSConverterApp {
         }
 
         const startTime = this.activeTask.startedAt ? new Date(this.activeTask.startedAt).toLocaleString() : 'N/A';
+        
+        // Формируем информацию об аудио
+        let audioInfoHtml = '';
+        if (this.activeTask.audioInfo) {
+            const audio = this.activeTask.audioInfo;
+            audioInfoHtml = `
+                <div class="audio-info-section">
+                    <h4>Исходное аудио:</h4>
+                    <div class="audio-info-grid">
+                        <div class="audio-info-item">
+                            <span class="audio-label">Кодек:</span>
+                            <span class="audio-value">${audio.codecName}</span>
+                        </div>
+                        <div class="audio-info-item">
+                            <span class="audio-label">Каналы:</span>
+                            <span class="audio-value">${audio.channelLayout} (${audio.channels})</span>
+                        </div>
+                        <div class="audio-info-item">
+                            <span class="audio-label">Sample Rate:</span>
+                            <span class="audio-value">${audio.sampleRate} Hz</span>
+                        </div>
+                        ${audio.bitRate ? `
+                        <div class="audio-info-item">
+                            <span class="audio-label">Bitrate:</span>
+                            <span class="audio-value">${this.formatBitrate(audio.bitRate)}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
         
         currentFile.innerHTML = `
             <div class="current-file-card">
@@ -258,6 +323,7 @@ class DTSConverterApp {
                         <span>${startTime}</span>
                     </div>
                 </div>
+                ${audioInfoHtml}
                 <div class="current-file-progress">
                     <pre id="ffmpeg-output" class="ffmpeg-output"></pre>
                 </div>
@@ -278,17 +344,38 @@ class DTSConverterApp {
             return;
         }
 
-        queueList.innerHTML = this.queue.map(item => `
-            <div class="queue-item">
-                <div class="queue-item-info">
-                    <div class="queue-item-name">${this.getFileName(item.filePath)}</div>
-                    <div class="queue-item-path">${item.filePath}</div>
+        queueList.innerHTML = this.queue.map(item => {
+            let audioInfoHtml = '';
+            if (item.audioInfo) {
+                const audio = item.audioInfo;
+                audioInfoHtml = `
+                    <div class="queue-audio-info">
+                        <span class="audio-badge">${audio.codecName}</span>
+                        <span class="audio-badge">${audio.channelLayout} (${audio.channels}ch)</span>
+                        <span class="audio-badge">${audio.sampleRate} Hz</span>
+                    </div>
+                `;
+            }
+            
+            // Кнопка удаления доступна всегда
+            const deleteButton = `<button class="btn btn-danger btn-small" onclick="app.deleteTask('${item.id}', ${item.status === 'processing'})">Удалить</button>`;
+            
+            return `
+                <div class="queue-item">
+                    <div class="queue-item-info">
+                        <div class="queue-item-name">${this.getFileName(item.filePath)}</div>
+                        <div class="queue-item-path">${item.filePath}</div>
+                        ${audioInfoHtml}
+                    </div>
+                    <div class="queue-item-actions">
+                        <div class="queue-item-status status-${item.status}">
+                            ${this.getStatusText(item.status)}
+                        </div>
+                        ${deleteButton}
+                    </div>
                 </div>
-                <div class="queue-item-status status-${item.status}">
-                    ${this.getStatusText(item.status)}
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
     updateHistory(history) {
@@ -308,11 +395,23 @@ class DTSConverterApp {
             const completedTime = item.completedAt ? new Date(item.completedAt).toLocaleString() : 'N/A';
             const hasError = item.status === 'error';
             
+            let audioInfoHtml = '';
+            if (item.audioInfo) {
+                const audio = item.audioInfo;
+                audioInfoHtml = `
+                    <div class="history-audio-info">
+                        <span class="audio-badge-small">${audio.codecName}</span>
+                        <span class="audio-badge-small">${audio.channelLayout}</span>
+                    </div>
+                `;
+            }
+            
             return `
                 <div class="history-item ${hasError ? 'history-item-error' : ''}">
                     <div class="history-item-info">
                         <div class="history-item-name">${this.getFileName(item.filePath)}</div>
                         <div class="history-item-path">${item.filePath}</div>
+                        ${audioInfoHtml}
                         ${hasError ? `<div class="history-item-error-msg">${item.error || 'Неизвестная ошибка'}</div>` : ''}
                     </div>
                     <div class="history-item-meta">
@@ -327,16 +426,18 @@ class DTSConverterApp {
     }
 
     updateConversionProgress(data) {
-        // Обновляем активную задачу
-        this.loadActiveTask();
-        
-        // Обновляем FFmpeg output если есть
-        if (data.message) {
+        // Обновляем FFmpeg output если есть сообщение
+        if (data && data.message && data.message.trim()) {
             const ffmpegOutput = document.getElementById('ffmpeg-output');
             if (ffmpegOutput) {
                 ffmpegOutput.textContent = data.message;
                 ffmpegOutput.scrollTop = ffmpegOutput.scrollHeight;
             }
+        }
+        
+        // Обновляем статус задачи только если изменился
+        if (data && data.status && this.activeTask && this.activeTask.status !== data.status) {
+            this.loadActiveTask();
         }
     }
 
@@ -362,6 +463,40 @@ class DTSConverterApp {
             this.addLog('Задача отменена', 'warning');
         } catch (error) {
             this.addLog(`Ошибка отмены задачи: ${error.message}`, 'error');
+        }
+    }
+
+    async deleteTask(taskId, isProcessing = false) {
+        let confirmMessage = 'Вы уверены, что хотите удалить задачу из очереди?';
+        
+        if (isProcessing) {
+            confirmMessage = 'Задача в процессе конвертации. Вы уверены, что хотите принудительно удалить её? Это может привести к зависанию процесса ffmpeg.';
+        }
+        
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/tasks/delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    taskId,
+                    force: isProcessing
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Ошибка удаления задачи');
+            }
+
+            this.addLog('Задача удалена из очереди', 'info');
+        } catch (error) {
+            this.addLog(`Ошибка удаления задачи: ${error.message}`, 'error');
         }
     }
 
@@ -392,6 +527,11 @@ class DTSConverterApp {
     }
 
     addLog(message, level = 'info') {
+        // Игнорируем пустые или undefined сообщения
+        if (!message || message === 'undefined') {
+            return;
+        }
+        
         const logsContainer = document.getElementById('logs');
         const timestamp = new Date().toLocaleTimeString();
         const logEntry = document.createElement('div');

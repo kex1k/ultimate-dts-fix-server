@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"ultimate-dts-fix-server/backend/services"
 	"net/http"
+	"ultimate-dts-fix-server/backend/services"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,9 +16,9 @@ func NewHandler(queueService *services.QueueService, converterService *services.
 	// Устанавливаем связи между сервисами
 	queueService.SetWebSocketService(wsService)
 	converterService.SetWebSocketService(wsService)
-	
+
 	apiHandler := NewAPIHandler(queueService, converterService, wsService)
-	
+
 	return &Handler{
 		apiHandler: apiHandler,
 		wsService:  wsService,
@@ -34,9 +34,9 @@ func (h *Handler) setupRouter() *gin.Engine {
 	if gin.Mode() == gin.ReleaseMode {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	
+
 	router := gin.Default()
-	
+
 	// API маршруты
 	api := router.Group("/api")
 	{
@@ -46,16 +46,18 @@ func (h *Handler) setupRouter() *gin.Engine {
 		api.GET("/history", h.apiHandler.GetHistory)
 		api.POST("/tasks", h.apiHandler.AddTask)
 		api.POST("/tasks/cancel", h.apiHandler.CancelTask)
+		api.POST("/tasks/delete", h.apiHandler.DeleteTask)
+		api.POST("/search-files", h.apiHandler.SearchFiles)
 	}
-	
+
 	// WebSocket маршрут
 	router.GET("/ws", func(c *gin.Context) {
 		h.wsService.HandleWebSocket(c.Writer, c.Request)
 	})
-	
+
 	// Статические файлы для разработки
 	router.StaticFS("/static", http.Dir("./static"))
-	
+
 	// Корневой маршрут для проверки
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -63,6 +65,6 @@ func (h *Handler) setupRouter() *gin.Engine {
 			"version": "1.0.0",
 		})
 	})
-	
+
 	return router
 }

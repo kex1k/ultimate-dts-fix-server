@@ -1,11 +1,11 @@
 package services
 
 import (
-	"ultimate-dts-fix-server/backend/models"
 	"encoding/json"
 	"log"
 	"net/http"
 	"sync"
+	"ultimate-dts-fix-server/backend/models"
 
 	"github.com/gorilla/websocket"
 )
@@ -82,8 +82,8 @@ func (s *WebSocketService) BroadcastMessage(messageType string, data interface{}
 		return
 	}
 
-	s.clientsMux.RLock()
-	defer s.clientsMux.RUnlock()
+	s.clientsMux.Lock()
+	defer s.clientsMux.Unlock()
 
 	for client := range s.clients {
 		err := client.WriteMessage(websocket.TextMessage, jsonMessage)

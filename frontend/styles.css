@@ -96,6 +96,7 @@ header p {
     display: flex;
     gap: 10px;
     margin-bottom: 20px;
+    flex-wrap: wrap;
 }
 
 .file-path-input {
@@ -195,6 +196,124 @@ header p {
     transform: scale(1.1);
 }
 
+/* Search Results Section */
+.search-results-container {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.search-results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.search-results-header h3 {
+    font-size: 1.2em;
+    color: #333;
+    margin: 0;
+}
+
+.btn-close {
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    font-size: 1.5em;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.btn-close:hover {
+    background: #c82333;
+    transform: scale(1.1);
+}
+
+.search-results-table-wrapper {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+}
+
+.search-results-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.search-results-table thead {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    z-index: 10;
+}
+
+.search-results-table th {
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+    white-space: nowrap;
+}
+
+.search-results-table td {
+    padding: 12px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.search-results-table tbody tr {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.search-results-table tbody tr:hover {
+    background: #f8f9fa;
+    transform: translateX(3px);
+}
+
+.search-results-table tbody tr:active {
+    background: #e9ecef;
+}
+
+.file-name-cell {
+    font-weight: 600;
+    color: #333;
+}
+
+.file-path-cell {
+    color: #6c757d;
+    font-size: 0.9em;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-size-cell {
+    color: #495057;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+.file-date-cell {
+    color: #6c757d;
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+
 /* Current File Section */
 .current-file-container {
     background: #f8f9fa;
@@ -263,6 +382,44 @@ header p {
     font-weight: 600;
 }
 
+.audio-info-section {
+    margin-top: 15px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid #667eea;
+}
+
+.audio-info-section h4 {
+    margin: 0 0 10px 0;
+    font-size: 1em;
+    color: #495057;
+}
+
+.audio-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+}
+
+.audio-info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.audio-label {
+    font-size: 0.85em;
+    color: #6c757d;
+    font-weight: 600;
+}
+
+.audio-value {
+    font-size: 0.95em;
+    color: #333;
+    font-weight: 500;
+}
+
 .current-file-progress {
     margin-top: 15px;
 }
@@ -302,6 +459,7 @@ header p {
     background: #f8f9fa;
     border-radius: 8px;
     transition: all 0.3s;
+    gap: 15px;
 }
 
 .queue-item:hover {
@@ -323,6 +481,30 @@ header p {
     font-size: 0.85em;
     color: #6c757d;
     word-break: break-all;
+}
+
+.queue-audio-info {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.audio-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    background: #667eea;
+    color: white;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+}
+
+.queue-item-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
 }
 
 .queue-item-status {
@@ -375,6 +557,23 @@ header p {
     color: #6c757d;
     word-break: break-all;
     margin-bottom: 5px;
+}
+
+.history-audio-info {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+
+.audio-badge-small {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #e9ecef;
+    color: #495057;
+    border-radius: 10px;
+    font-size: 0.75em;
+    font-weight: 600;
 }
 
 .history-item-error-msg {

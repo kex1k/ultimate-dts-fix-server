@@ -1,10 +1,10 @@
 package services
 
 import (
-	"ultimate-dts-fix-server/backend/database"
-	"ultimate-dts-fix-server/backend/models"
 	"log"
 	"time"
+	"ultimate-dts-fix-server/backend/database"
+	"ultimate-dts-fix-server/backend/models"
 )
 
 type QueueService struct {
@@ -28,7 +28,7 @@ func (s *QueueService) SetWebSocketService(wsService *WebSocketService) {
 
 func (s *QueueService) Start() {
 	log.Println("Сервис очереди запущен")
-	
+
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
@@ -58,7 +58,7 @@ func (s *QueueService) addTask(task *models.Task) {
 		log.Printf("Ошибка добавления задачи в базу: %v", err)
 		return
 	}
-	
+
 	log.Printf("Задача добавлена в очередь: %s", task.FilePath)
 	s.broadcastQueueUpdate()
 }
@@ -76,4 +76,24 @@ func (s *QueueService) broadcastQueueUpdate() {
 
 func (s *QueueService) GetQueue() ([]*models.Task, error) {
 	return s.db.GetAllTasks()
+}
+
+func (s *QueueService) GetTask(taskID string) (*models.Task, error) {
+	return s.db.GetTask(taskID)
+}
+
+func (s *QueueService) DeleteTask(taskID string) error {
+	if err := s.db.DeleteTask(taskID); err != nil {
+		return err
+	}
+	s.broadcastQueueUpdate()
+	return nil
+}
+
+func (s *QueueService) UpdateTask(task *models.Task) error {
+	if err := s.db.UpdateTask(task); err != nil {
+		return err
+	}
+	s.broadcastQueueUpdate()
+	return nil
 }

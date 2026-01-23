@@ -25,14 +25,34 @@
         </div>
 
         <div class="file-input-section">
-            <h2>Добавить файлы в очередь</h2>
+            <h2>Поиск файлов</h2>
             <div class="file-input-area">
                 <div class="input-group">
-                    <input type="text" id="file-path-input" placeholder="Полный путь к файлу (например: /media/library1/movie.mkv)" class="file-path-input">
-                    <button id="add-file-btn" class="btn btn-primary">Добавить</button>
+                    <input type="text" id="file-path-input" placeholder="Поиск по regex (по умолчанию: DTS.*5\.1)" class="file-path-input">
+                    <button id="search-files-btn" class="btn btn-primary">Искать</button>
                 </div>
-                <div id="file-list" class="file-list"></div>
-                <button id="add-to-queue-btn" class="btn btn-secondary">Добавить все в очередь</button>
+                
+                <!-- Таблица результатов поиска -->
+                <div id="search-results-container" class="search-results-container" style="display: none;">
+                    <div class="search-results-header">
+                        <h3>Результаты поиска (<span id="search-count">0</span>) - Нажмите на файл для добавления в очередь</h3>
+                        <button id="close-search-btn" class="btn-close">×</button>
+                    </div>
+                    <div class="search-results-table-wrapper">
+                        <table id="search-results-table" class="search-results-table">
+                            <thead>
+                                <tr>
+                                    <th>Имя файла</th>
+                                    <th>Путь</th>
+                                    <th>Размер</th>
+                                    <th>Изменен</th>
+                                </tr>
+                            </thead>
+                            <tbody id="search-results-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 
