@@ -1,12 +1,16 @@
 package main
 
 import (
+	"embed"
+	"log"
+	"os"
 	"ultimate-dts-fix-server/backend/database"
 	"ultimate-dts-fix-server/backend/handlers"
 	"ultimate-dts-fix-server/backend/services"
-	"log"
-	"os"
 )
+
+//go:embed static/*
+var staticFiles embed.FS
 
 func main() {
 	// Инициализация хранилища данных
@@ -24,18 +28,19 @@ func main() {
 	// Установка связей между сервисами
 	queueService.SetWebSocketService(wsService)
 	converterService.SetWebSocketService(wsService)
+	wsService.SetServices(queueService, converterService)
 
 	// Запуск сервисов
 	go queueService.Start()
 	go converterService.Start()
 
 	// Инициализация обработчиков HTTP
-	handler := handlers.NewHandler(queueService, converterService, wsService)
+	handler := handlers.NewHandler(queueService, converterService, wsService, staticFiles)
 
 	// Запуск HTTP сервера
 	port := getPort()
 	log.Printf("Сервер запущен на порту %s", port)
-	
+
 	if err := handler.Start(":" + port); err != nil {
 		log.Fatal("Ошибка запуска сервера:", err)
 	}

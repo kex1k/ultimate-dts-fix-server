@@ -1,7 +1,7 @@
 # backend/Dockerfile
 FROM golang:1.21-alpine AS builder
 
-# Устанавливаем только FFmpeg (SQLite больше не нужен!)
+# Устанавливаем только FFmpeg
 RUN apk add --no-cache ffmpeg
 
 WORKDIR /app
@@ -12,7 +12,7 @@ COPY go.mod go.sum ./
 # Скачиваем зависимости
 RUN go mod download
 
-# Копируем весь исходный код
+# Копируем весь исходный код включая статические файлы
 COPY . .
 
 # Собираем приложение (без CGO - чистый Go!)

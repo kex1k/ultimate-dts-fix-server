@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DTS to FLAC Converter</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>DTS to FLAC Converter</h1>
+            <p>Конвертация аудиодорожек DTS-HD MA в FLAC</p>
+        </header>
+
+        <div class="status-panel">
+            <div class="status-item">
+                <span class="status-label">Статус сервера:</span>
+                <span id="server-status" class="status-offline">Отключен</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">WebSocket:</span>
+                <span id="ws-status" class="status-offline">Отключен</span>
+            </div>
+        </div>
+
+        <div class="file-input-section">
+            <h2>Поиск файлов</h2>
+            <div class="file-input-area">
+                <div class="input-group">
+                    <input type="text" id="file-path-input" placeholder="Поиск по regex (по умолчанию: DTS.*5\.1)" class="file-path-input">
+                    <button id="search-files-btn" class="btn btn-primary">Искать</button>
+                </div>
+                
+                <!-- Таблица результатов поиска -->
+                <div id="search-results-container" class="search-results-container" style="display: none;">
+                    <div class="search-results-header">
+                        <h3>Результаты поиска (<span id="search-count">0</span>) - Нажмите на файл для добавления в очередь</h3>
+                        <button id="close-search-btn" class="btn-close">×</button>
+                    </div>
+                    <div class="search-results-table-wrapper">
+                        <table id="search-results-table" class="search-results-table">
+                            <thead>
+                                <tr>
+                                    <th>Имя файла</th>
+                                    <th>Путь</th>
+                                    <th>Размер</th>
+                                    <th>Изменен</th>
+                                </tr>
+                            </thead>
+                            <tbody id="search-results-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="current-file-section">
+            <h2>Текущая конвертация</h2>
+            <div id="current-file" class="current-file-container">
+                <div class="empty-current">Нет активной конвертации</div>
+            </div>
+        </div>
+
+        <div class="queue-section">
+            <h2>Очередь конвертации</h2>
+            <div id="queue-list" class="queue-list">
+                <div class="empty-queue">Очередь пуста</div>
+            </div>
+        </div>
+
+        <div class="history-section">
+            <h2>История конвертаций</h2>
+            <div id="history-list" class="history-list">
+                <div class="empty-history">История пуста</div>
+            </div>
+        </div>
+
+        <div class="logs-section">
+            <h2>Логи</h2>
+            <div id="logs" class="logs-container"></div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

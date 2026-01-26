@@ -29,6 +29,8 @@ type Task struct {
 	Progress    int        `json:"progress"`
 	Error       string     `json:"error,omitempty"`
 	AudioInfo   *AudioInfo `json:"audioInfo,omitempty"`
+	Duration    float64    `json:"duration,omitempty"`    // Длительность видео в секундах
+	CurrentTime float64    `json:"currentTime,omitempty"` // Текущее время конвертации в секундах
 	CreatedAt   time.Time  `json:"createdAt"`
 	StartedAt   *time.Time `json:"startedAt,omitempty"`
 	CompletedAt *time.Time `json:"completedAt,omitempty"`

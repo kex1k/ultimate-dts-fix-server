@@ -103,6 +103,16 @@ func (s *ConverterService) GetActiveTask() *models.Task {
 func (s *ConverterService) convertTask(task *models.Task) {
 	log.Printf("Начало конвертации: %s", task.FilePath)
 
+	// Получаем длительность видео
+	duration, durationErr := s.getVideoDuration(task.FilePath)
+	if durationErr != nil {
+		log.Printf("Предупреждение: не удалось получить длительность видео: %v", durationErr)
+		duration = 0
+	} else {
+		task.Duration = duration
+		log.Printf("Длительность видео: %.2f секунд (%.2f минут)", duration, duration/60)
+	}
+
 	// Устанавливаем активную задачу
 	s.mu.Lock()
 	s.activeTask = task
@@ -276,6 +286,16 @@ type FFProbeOutput struct {
 	Streams []AudioStreamInfo `json:"streams"`
 }
 
+// FFProbeFormat структура для получения длительности
+type FFProbeFormat struct {
+	Duration string `json:"duration"`
+}
+
+// FFProbeFormatOutput структура для парсинга вывода ffprobe с форматом
+type FFProbeFormatOutput struct {
+	Format FFProbeFormat `json:"format"`
+}
+
 // getAudioInfo получает информацию об аудио потоке через ffprobe
 func (s *ConverterService) getAudioInfo(filePath string) (*AudioStreamInfo, error) {
 	cmd := exec.Command("ffprobe",
@@ -301,6 +321,33 @@ func (s *ConverterService) getAudioInfo(filePath string) (*AudioStreamInfo, erro
 	}
 
 	return &probeOutput.Streams[0], nil
+}
+
+// getVideoDuration получает длительность видео через ffprobe
+func (s *ConverterService) getVideoDuration(filePath string) (float64, error) {
+	cmd := exec.Command("ffprobe",
+		"-v", "quiet",
+		"-print_format", "json",
+		"-show_format",
+		filePath,
+	)
+
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("ошибка выполнения ffprobe: %v", err)
+	}
+
+	var probeOutput FFProbeFormatOutput
+	if err := json.Unmarshal(output, &probeOutput); err != nil {
+		return 0, fmt.Errorf("ошибка парсинга вывода ffprobe: %v", err)
+	}
+
+	var duration float64
+	if _, err := fmt.Sscanf(probeOutput.Format.Duration, "%f", &duration); err != nil {
+		return 0, fmt.Errorf("ошибка парсинга длительности: %v", err)
+	}
+
+	return duration, nil
 }
 
 func (s *ConverterService) executeFFmpegConversion(ctx context.Context, task *models.Task) error {
@@ -383,14 +430,21 @@ func (s *ConverterService) readFFmpegProgress(stdout io.ReadCloser, task *models
 		// Отправляем обновление только раз в 2 секунды
 		if time.Since(lastUpdate) >= updateInterval && len(progressMap) > 0 {
 			if s.wsService != nil {
-				// Формируем читаемое сообщение
-				progressMsg := s.formatFFmpegProgress(progressMap)
-				log.Printf("[FFmpeg Progress] Task %s: %s", task.ID, progressMsg)
+				// Вычисляем прогресс
+				progress := s.calculateProgress(progressMap, task)
+				currentTime := s.parseCurrentTime(progressMap)
+
+				// Обновляем текущее время в задаче
+				task.CurrentTime = currentTime
+
+				log.Printf("[FFmpeg Progress] Task %s: %.1f%% (%.1f/%.1f sec)",
+					task.ID, progress, currentTime, task.Duration)
+
 				s.wsService.BroadcastConversionProgress(
 					task.ID,
-					0,
+					int(progress),
 					models.StatusProcessing,
-					progressMsg,
+					"",
 				)
 			}
 			lastUpdate = time.Now()
@@ -399,15 +453,66 @@ func (s *ConverterService) readFFmpegProgress(stdout io.ReadCloser, task *models
 
 	// Отправляем последнее обновление если есть данные
 	if len(progressMap) > 0 && s.wsService != nil {
-		progressMsg := s.formatFFmpegProgress(progressMap)
-		log.Printf("[FFmpeg Progress Final] Task %s: %s", task.ID, progressMsg)
+		progress := s.calculateProgress(progressMap, task)
+		currentTime := s.parseCurrentTime(progressMap)
+		task.CurrentTime = currentTime
+
+		log.Printf("[FFmpeg Progress Final] Task %s: %.1f%% (%.1f/%.1f sec)",
+			task.ID, progress, currentTime, task.Duration)
+
 		s.wsService.BroadcastConversionProgress(
 			task.ID,
-			0,
+			int(progress),
 			models.StatusProcessing,
-			progressMsg,
+			"",
 		)
 	}
+}
+
+// parseCurrentTime извлекает текущее время из прогресса FFmpeg
+func (s *ConverterService) parseCurrentTime(progressMap map[string]string) float64 {
+	outTime, ok := progressMap["out_time_ms"]
+	if !ok || outTime == "" {
+		// Пробуем out_time в формате HH:MM:SS.MS
+		outTime, ok = progressMap["out_time"]
+		if !ok || outTime == "" {
+			return 0
+		}
+		// Парсим формат HH:MM:SS.MS
+		var hours, minutes int
+		var seconds float64
+		if _, err := fmt.Sscanf(outTime, "%d:%d:%f", &hours, &minutes, &seconds); err == nil {
+			return float64(hours*3600+minutes*60) + seconds
+		}
+		return 0
+	}
+
+	// out_time_ms в микросекундах
+	var timeMs int64
+	if _, err := fmt.Sscanf(outTime, "%d", &timeMs); err != nil {
+		return 0
+	}
+
+	return float64(timeMs) / 1000000.0
+}
+
+// calculateProgress вычисляет процент прогресса
+func (s *ConverterService) calculateProgress(progressMap map[string]string, task *models.Task) float64 {
+	if task.Duration <= 0 {
+		return 0
+	}
+
+	currentTime := s.parseCurrentTime(progressMap)
+	if currentTime <= 0 {
+		return 0
+	}
+
+	progress := (currentTime / task.Duration) * 100.0
+	if progress > 100 {
+		progress = 100
+	}
+
+	return progress
 }
 
 func (s *ConverterService) formatFFmpegProgress(progressMap map[string]string) string {
